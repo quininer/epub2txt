@@ -9,7 +9,7 @@ extern crate html2text;
 mod error;
 
 use std::path::{ Path, PathBuf };
-use std::io::{ Read, Write, Seek };
+use std::io::{ self, Read, Write, Seek };
 use url::percent_encoding::percent_decode;
 use zip::ZipArchive;
 use kuchiki::traits::*;
@@ -88,7 +88,13 @@ impl<R: ReadSeek> Book<R> {
 
                 Ok((order, label, path))
             })
-            .filter_map(|r| r.ok())
+            .filter_map(|r| match r {
+                Ok(output) => Some(output),
+                Err(err) => {
+                    write!(io::stderr(), "warn: {}", err).unwrap();
+                    None
+                }
+            })
             .collect::<Vec<(usize, String, PathBuf)>>();
 
         if nav.is_empty() { Err("nav list is empty!")? };
