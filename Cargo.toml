@@ -2,10 +2,12 @@
 name = "epub2txt"
 version = "0.1.0"
 authors = ["quininer kel <quininer@live.com>"]
+description = "simple EPUB to TXT converter."
 
 [dependencies]
-zip = "*"
-clap = "*"
-kuchiki = "*"
-html2text = "*"
-error-chain = "*"
+url = "1.2"
+zip = "0.2"
+clap = "2.19"
+kuchiki = "0.4"
+html2text = "0.1"
+error-chain = "0.7"

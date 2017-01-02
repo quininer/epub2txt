@@ -1,5 +1,6 @@
 #![feature(field_init_shorthand)]
 
+extern crate url;
 extern crate zip;
 extern crate kuchiki;
 extern crate html2text;
@@ -9,6 +10,7 @@ mod error;
 
 use std::path::{ Path, PathBuf };
 use std::io::{ Read, Write, Seek };
+use url::percent_encoding::percent_decode;
 use zip::ZipArchive;
 use kuchiki::traits::*;
 pub use error::Error;
@@ -18,6 +20,7 @@ pub trait ReadSeek: Read + Seek {}
 impl<T: Read + Seek> ReadSeek for T {}
 
 
+#[derive(Debug)]
 pub struct Book<R: ReadSeek> {
     epub: ZipArchive<R>,
     /// `(title, author, description)`
@@ -44,7 +47,7 @@ impl<R: ReadSeek> Book<R> {
                 .unwrap_or(String::from("anonymous")),
             dom.select(r"dc\:description").unwrap()
                 .next().map(|e| e.text_contents())
-                .unwrap_or_default()
+                .unwrap_or(String::from("None"))
         );
 
         let ncx_node = dom.select("item#ncx, item#toc, item#ncxtoc").unwrap()
@@ -88,7 +91,7 @@ impl<R: ReadSeek> Book<R> {
             .filter_map(|r| r.ok())
             .collect::<Vec<(usize, String, PathBuf)>>();
 
-        if nav.is_empty() { Err("nav list empty!")? };
+        if nav.is_empty() { Err("nav list is empty!")? };
         nav.sort_by_key(|&(order, ..)| order);
 
         Ok(Book { epub, metadata, nav })
@@ -128,11 +131,12 @@ description: {}\n\n\n",
         write!(output, "\n\n")?;
 
         for &(_, ref label, ref path) in &self.nav {
+            let path = percent_decode(path.to_str().unwrap().as_bytes()).decode_utf8()?;
             write!(
                 output,
                 "{}\n{}",
-                label,
-                html2text::from_read(&mut self.epub.by_name(path.to_str().unwrap())?, 120),
+                label.trim(),
+                html2text::from_read(&mut self.epub.by_name(&path)?, 120),
             )?;
         }
 
