@@ -4,7 +4,7 @@ extern crate epub2txt;
 use std::io::{ self, Read, Write, Cursor };
 use std::fs::File;
 use clap::{ Arg, App };
-use epub2txt::{ ReadSeek, epub2txt };
+use epub2txt::{ ReadSeek, epub2txt, Error, ErrorKind };
 
 
 fn main() {
@@ -16,7 +16,7 @@ fn main() {
         .arg(Arg::with_name("output").short("o").long("output").value_name("OUTPUT").help("write to file."))
         .get_matches();
 
-    epub2txt(
+    match epub2txt(
         &mut if let Some(path) = matches.value_of("input") {
             Box::new(File::open(path).unwrap()) as Box<ReadSeek>
         } else {
@@ -29,5 +29,8 @@ fn main() {
         } else {
             Box::new(io::stdout()) as Box<Write>
         }
-    ).unwrap();
+    ) {
+        Err(Error(ErrorKind::Io(ref err), _)) if err.kind() == io::ErrorKind::BrokenPipe => (),
+        err => err.unwrap()
+    };
 }

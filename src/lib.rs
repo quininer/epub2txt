@@ -13,7 +13,7 @@ use std::io::{ self, Read, Write, Seek };
 use url::percent_encoding::percent_decode;
 use zip::ZipArchive;
 use kuchiki::traits::*;
-pub use error::Error;
+pub use error::{ Error, ErrorKind };
 
 
 pub trait ReadSeek: Read + Seek {}
@@ -64,7 +64,7 @@ impl<R: ReadSeek> Book<R> {
             .from_utf8()
             .read_from(&mut epub.by_name(ncx_path.to_str().unwrap())?)?
             .select("navMap > navPoint").unwrap()
-            .map(|node| -> Result<(usize, String, PathBuf), Error> {
+            .map(|node| -> Result<_, Error> {
                 let node = node.as_node();
 
                 let order = node.as_element().ok_or("No element.")?
@@ -95,7 +95,7 @@ impl<R: ReadSeek> Book<R> {
                     None
                 }
             })
-            .collect::<Vec<(usize, String, PathBuf)>>();
+            .collect::<Vec<_>>();
 
         if nav.is_empty() { Err("nav list is empty!")? };
         nav.sort_by_key(|&(order, ..)| order);
