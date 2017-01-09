@@ -30,7 +30,7 @@ pub struct Book<R: ReadSeek> {
 }
 
 impl<R: ReadSeek> Book<R> {
-    pub fn new<'a>(mut epub: ZipArchive<R>, opf: &str) -> Result<Book<R>, Error> {
+    pub fn new(mut epub: ZipArchive<R>, opf: &str) -> Result<Book<R>, Error> {
         let mut root = Path::new(opf).to_path_buf();
         root.pop();
 
@@ -44,10 +44,10 @@ impl<R: ReadSeek> Book<R> {
                 .ok_or("No found <dc:title>.")?,
             dom.select(r"dc\:creator").unwrap()
                 .next().map(|e| e.text_contents())
-                .unwrap_or(String::from("anonymous")),
+                .unwrap_or_else(|| String::from("anonymous")),
             dom.select(r"dc\:description").unwrap()
                 .next().map(|e| e.text_contents())
-                .unwrap_or(String::from("None"))
+                .unwrap_or_else(|| String::from("None"))
         );
 
         let ncx_node = dom.select("item#ncx, item#toc, item#ncxtoc").unwrap()
@@ -130,17 +130,11 @@ description: {}\n\n\n",
             description.trim()
         )?;
 
-        for &(i, ref label, _) in &self.nav {
-            writeln!(output, "{} - {}", i, label.trim())?;
-        }
-
-        write!(output, "\n\n")?;
-
         for &(_, ref label, ref path) in &self.nav {
             let path = percent_decode(path.to_str().unwrap().as_bytes()).decode_utf8()?;
             write!(
                 output,
-                "{}\n{}",
+                "{}\n{}\n\n",
                 label.trim(),
                 html2text::from_read(&mut self.epub.by_name(&path)?, 120),
             )?;
