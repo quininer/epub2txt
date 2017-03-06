@@ -13,6 +13,7 @@ use std::io::{ self, Read, Write, Seek };
 use url::percent_encoding::percent_decode;
 use zip::ZipArchive;
 use kuchiki::traits::*;
+use kuchiki::{ NodeDataRef, ElementData };
 pub use error::{ Error, ErrorKind };
 
 
@@ -22,10 +23,10 @@ impl<T: Read + Seek> ReadSeek for T {}
 
 #[derive(Debug)]
 pub struct Book<R: ReadSeek> {
-    epub: ZipArchive<R>,
+    pub epub: ZipArchive<R>,
     /// `(title, author, description)`
     pub metadata: (String, String, String),
-    /// `(label, path)`
+    /// `(order, label, path)`
     pub nav: Vec<(usize, String, PathBuf)>
 }
 
@@ -64,30 +65,7 @@ impl<R: ReadSeek> Book<R> {
             .from_utf8()
             .read_from(&mut epub.by_name(ncx_path.to_str().unwrap())?)?
             .select("navMap > navPoint").unwrap()
-            .map(|node| -> Result<_, Error> {
-                let node = node.as_node();
-
-                let order = node.as_element().ok_or("No element.")?
-                    .attributes.borrow()
-                    .get("playorder").ok_or("No `playOrder` in <navPoint>")?
-                    .parse::<usize>()?;
-
-                let label = node.select("navLabel > text").unwrap()
-                    .next().ok_or("No found <text>.")?
-                    .text_contents();
-
-                let path = node.select("content").unwrap()
-                    .next()
-                    .and_then(|n| n.as_node().as_element()
-                        .and_then(|n| n.attributes.borrow()
-                            .get("src")
-                            .map(|src| root.join(src))
-                        )
-                    )
-                    .ok_or("No found <content> or `src`.")?;
-
-                Ok((order, label, path))
-            })
+            .map(|node| node_get_nav(&root, node))
             .filter_map(|r| match r {
                 Ok(output) => Some(output),
                 Err(err) => {
@@ -117,26 +95,27 @@ impl<R: ReadSeek> Book<R> {
         Book::new(epub, attr.get("full-path").ok_or("No `full-path` in container.")?)
     }
 
-    pub fn write(&mut self, output: &mut Write) -> Result<(), Error> {
+    pub fn write_to(&mut self, output: &mut Write) -> Result<(), Error> {
         let (ref title, ref author, ref description) = self.metadata;
 
         write!(
             output,
-"title: {}
-author: {}\n
-description: {}\n\n\n",
+            "title: {}\n\
+            author: {}\n\
+            description: {}\n\n",
             title.trim(),
             author.trim(),
             description.trim()
         )?;
 
         for &(_, ref label, ref path) in &self.nav {
-            let path = percent_decode(path.to_str().unwrap().as_bytes()).decode_utf8()?;
+            let path = path.to_string_lossy();
+            let path = percent_decode(path.as_bytes()).decode_utf8()?;
             write!(
                 output,
                 "{}\n{}\n\n",
                 label.trim(),
-                html2text::from_read(&mut self.epub.by_name(&path)?, 120),
+                html2text::from_read(&mut self.epub.by_name(&path)?, 180),
             )?;
         }
 
@@ -144,8 +123,33 @@ description: {}\n\n\n",
     }
 }
 
+fn node_get_nav(root: &Path, node: NodeDataRef<ElementData>) -> Result<(usize, String, PathBuf), Error> {
+    let node = node.as_node();
+
+    let order = node.as_element().ok_or("No element.")?
+        .attributes.borrow()
+        .get("playorder").ok_or("No `playOrder` in <navPoint>")?
+        .parse::<usize>()?;
+
+    let label = node.select("navLabel > text").unwrap()
+        .next().ok_or("No found <text>.")?
+        .text_contents();
+
+    let path = node.select("content").unwrap()
+        .next()
+        .and_then(|n| n.as_node().as_element()
+            .and_then(|n| n.attributes.borrow()
+                .get("src")
+                .map(|src| root.join(src))
+            )
+        )
+        .ok_or("No found <content> or `src`.")?;
+
+    Ok((order, label, path))
+}
+
 
 #[inline]
 pub fn epub2txt(input: &mut ReadSeek, output: &mut Write) -> Result<(), Error> {
-    Book::from_container(ZipArchive::new(input)?)?.write(output)
+    Book::from_container(ZipArchive::new(input)?)?.write_to(output)
 }
