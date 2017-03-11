@@ -40,17 +40,14 @@ impl<R: ReadSeek> Book<R> {
 
         let metadata = (
             dom.select(r"dc\:title").unwrap()
-                .next().and_then(|e| e.as_node().first_child())
-                .and_then(|e| e.as_text().map(|t| t.borrow().to_string()))
+                .next().map(|e| e.text_contents())
                 .ok_or("No found <dc:title>.")?,
             dom.select(r"dc\:creator").unwrap()
-                .next().and_then(|e| e.as_node().first_child())
-                .and_then(|e| e.as_text().map(|t| t.borrow().to_string()))
-                .unwrap_or_else(|| String::from("anonymous")),
+                .next().map(|e| e.text_contents())
+                .unwrap_or_else(|| "anonymous".into()),
             dom.select(r"dc\:description").unwrap()
-                .next().and_then(|e| e.as_node().first_child())
-                .and_then(|e| e.as_text().map(|t| t.borrow().to_string()))
-                .unwrap_or_else(|| String::from("None"))
+                .next().map(|e| e.text_contents())
+                .unwrap_or_else(|| "None".into())
         );
 
         let ncx_node = dom.select("item#ncx, item#toc, item#ncxtoc").unwrap()
@@ -98,7 +95,7 @@ impl<R: ReadSeek> Book<R> {
             output,
             "title: {}\n\
             author: {}\n\
-            description: {}\n\n",
+            description: {}\n\n\n",
             title.trim(),
             author.trim(),
             description.trim()
@@ -107,12 +104,15 @@ impl<R: ReadSeek> Book<R> {
         for &(_, ref label, ref path) in &self.nav {
             let path = path.to_string_lossy();
             let path = percent_decode(path.as_bytes()).decode_utf8()?;
-            write!(
-                output,
-                "{}:\n{}\n\n",
-                label.trim(),
-                html2text::from_read(&mut self.epub.by_name(&path)?, 180),
-            )?;
+            let context = html2text::from_read(&mut self.epub.by_name(&path)?, 99999);
+
+            if context.starts_with(label) {
+                write!(output, "{}", context)?;
+            } else {
+                write!(output, "{}:\n{}", label.trim(), context)?;
+            }
+
+            write!(output, "\n-----\n\n")?;
         }
 
         Ok(())
