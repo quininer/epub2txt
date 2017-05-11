@@ -2,13 +2,14 @@ extern crate url;
 extern crate zip;
 extern crate sanngaa;
 extern crate html2text;
+#[macro_use] extern crate lazy_static;
 #[macro_use] extern crate error_chain;
 
 mod error;
 
 use std::path::{ Path, PathBuf };
 use std::io::{ self, Read, Write, Seek };
-use url::percent_encoding::percent_decode;
+use url::Url;
 use zip::ZipArchive;
 use sanngaa::traits::*;
 use sanngaa::{ NodeDataRef, ElementData };
@@ -17,6 +18,11 @@ pub use error::{ Error, ErrorKind };
 
 pub trait ReadSeek: Read + Seek {}
 impl<T: Read + Seek> ReadSeek for T {}
+
+lazy_static! {
+    static ref BASE_URL: Url = Url::from_directory_path("/").unwrap();
+}
+
 
 
 #[derive(Debug)]
@@ -61,7 +67,7 @@ impl<R: ReadSeek> Book<R> {
             .from_utf8()
             .read_from(&mut epub.by_name(ncx_path.to_str().unwrap())?)?
             .select("navMap > navPoint").unwrap()
-            .map(|node| node_get_nav(&root, node))
+            .map(|node| node_get_nav(&root, &node))
             .filter_map(|r| match r {
                 Ok(output) => Some(output),
                 Err(err) => {
@@ -73,6 +79,7 @@ impl<R: ReadSeek> Book<R> {
 
         if nav.is_empty() { Err("nav list is empty!")? };
         nav.sort_by_key(|&(order, ..)| order);
+        nav.dedup_by(|&mut (.., ref p1), &mut (.., ref p2)| p1 == p2);
 
         Ok(Book { epub, metadata, nav })
     }
@@ -102,11 +109,12 @@ impl<R: ReadSeek> Book<R> {
         )?;
 
         for &(_, ref label, ref path) in &self.nav {
-            let path = path.to_string_lossy();
-            let path = percent_decode(path.as_bytes()).decode_utf8()?;
-            let context = html2text::from_read(&mut self.epub.by_name(&path)?, 99999);
+            let context = html2text::from_read(
+                &mut self.epub.by_name(&path.to_string_lossy())?,
+                ::std::usize::MAX
+            );
 
-            if context.starts_with(label) {
+            if context.starts_with(label.trim()) {
                 write!(output, "{}", context)?;
             } else {
                 write!(output, "{}:\n{}", label.trim(), context)?;
@@ -119,22 +127,24 @@ impl<R: ReadSeek> Book<R> {
     }
 }
 
-fn node_get_nav(root: &Path, node: NodeDataRef<ElementData>) -> Result<(usize, String, PathBuf), Error> {
+fn node_get_nav(root: &Path, node: &NodeDataRef<ElementData>) -> Result<(usize, String, PathBuf), Error> {
     let order = node.attributes.borrow()
-        .get("playOrder").ok_or("No `playOrder` in <navPoint>")?
+        .get("playOrder").ok_or_else(|| format!("No `playOrder` in <navPoint>: {:?}", node))?
         .parse::<usize>()?;
 
     let label = node.as_node().select("navLabel > text").unwrap()
-        .next().ok_or("No found <text>.")?
-        .text_contents();
+        .next()
+        .map(|node| node.text_contents())
+        .unwrap_or_default();
 
     let path = node.as_node().select("content").unwrap()
         .next()
         .and_then(|n| n.attributes.borrow()
             .get("src")
-            .map(|src| root.join(src))
+            .and_then(|src| Url::options().base_url(Some(&BASE_URL)).parse(src).ok())
+            .map(|uri| root.join(uri.path().trim_left_matches('/')))
         )
-        .ok_or("No found <content> or `src`.")?;
+        .ok_or_else(|| format!("No found <content> or `src`: {:?}", node))?;
 
     Ok((order, label, path))
 }

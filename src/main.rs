@@ -7,6 +7,7 @@ use clap::{ Arg, App, ArgMatches };
 use epub2txt::{ ReadSeek, epub2txt, Error, ErrorKind };
 
 
+#[inline]
 fn app() -> App<'static, 'static> {
     App::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
@@ -16,7 +17,8 @@ fn app() -> App<'static, 'static> {
         .arg(Arg::with_name("output").short("o").long("output").value_name("OUTPUT").help("write to file."))
 }
 
-fn start<'a>(matches: ArgMatches<'a>) -> Result<(), Error> {
+#[inline]
+fn start(matches: &ArgMatches) -> Result<(), Error> {
     let mut reader = if let Some(path) = matches.value_of("input") {
         Box::new(File::open(path)?) as Box<ReadSeek>
     } else {
@@ -37,5 +39,5 @@ fn start<'a>(matches: ArgMatches<'a>) -> Result<(), Error> {
 }
 
 fn main() {
-    start(app().get_matches()).unwrap();
+    start(&app().get_matches()).unwrap();
 }
