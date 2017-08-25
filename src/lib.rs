@@ -1,6 +1,6 @@
 extern crate url;
 extern crate zip;
-extern crate sanngaa;
+extern crate kuchiki;
 extern crate html2text;
 #[macro_use] extern crate lazy_static;
 #[macro_use] extern crate error_chain;
@@ -11,8 +11,8 @@ use std::path::{ Path, PathBuf };
 use std::io::{ self, Read, Write, Seek };
 use url::Url;
 use zip::ZipArchive;
-use sanngaa::traits::*;
-use sanngaa::{ NodeDataRef, ElementData };
+use kuchiki::traits::*;
+use kuchiki::{ NodeDataRef, ElementData };
 pub use error::{ Error, ErrorKind };
 
 
@@ -40,7 +40,7 @@ impl<R: ReadSeek> Book<R> {
         let mut root = Path::new(opf).to_path_buf();
         root.pop();
 
-        let dom = sanngaa::parse_xml()
+        let dom = kuchiki::parse_html()
             .from_utf8()
             .read_from(&mut epub.by_name(opf)?)?;
 
@@ -63,7 +63,7 @@ impl<R: ReadSeek> Book<R> {
             .map(|p| root.join(p))
             .ok_or("No `href` in opf.")?;
 
-        let mut nav = sanngaa::parse_xml()
+        let mut nav = kuchiki::parse_html()
             .from_utf8()
             .read_from(&mut epub.by_name(ncx_path.to_str().unwrap())?)?
             .select("navMap > navPoint").unwrap()
@@ -85,7 +85,7 @@ impl<R: ReadSeek> Book<R> {
     }
 
     pub fn from_container(mut epub: ZipArchive<R>) -> Result<Book<R>, Error> {
-        let node = sanngaa::parse_xml()
+        let node = kuchiki::parse_html()
             .from_utf8()
             .read_from(&mut epub.by_name("META-INF/container.xml")?)?
             .select("rootfile").unwrap()
@@ -128,8 +128,11 @@ impl<R: ReadSeek> Book<R> {
 }
 
 fn node_get_nav(root: &Path, node: &NodeDataRef<ElementData>) -> Result<(usize, String, PathBuf), Error> {
-    let order = node.attributes.borrow()
-        .get("playOrder").ok_or_else(|| format!("No `playOrder` in <navPoint>: {:?}", node))?
+    let attr = node.attributes.borrow();
+    let order = attr
+        .get("playOrder")
+        .or_else(|| attr.get("playorder"))
+        .ok_or_else(|| format!("No `playOrder` in <navPoint>: {:?}", node))?
         .parse::<usize>()?;
 
     let label = node.as_node().select("navLabel > text").unwrap()

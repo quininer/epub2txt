@@ -15,7 +15,7 @@ name = "epub2txt"
 url = "1.2"
 zip = { version = "0.2", default-features = false }
 clap = "2.19"
-sanngaa = { git = "https://github.com/quininer/sanngaa.git", rev = "644c785cfd10bf2ff9968f38007f1365f563c1e0" }
+kuchiki = "*"
 html2text = "0.1"
 lazy_static = "0.2"
 error-chain = "0.10"
