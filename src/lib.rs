@@ -5,14 +5,14 @@ extern crate html2text;
 #[macro_use] extern crate lazy_static;
 #[macro_use] extern crate error_chain;
 
-mod error;
+#[macro_use] mod error;
 
+use std::collections::HashMap;
 use std::path::{ Path, PathBuf };
-use std::io::{ self, Read, Write, Seek };
+use std::io::{ Read, Write, Seek };
 use url::Url;
 use zip::ZipArchive;
 use kuchiki::traits::*;
-use kuchiki::{ NodeDataRef, ElementData };
 pub use error::{ Error, ErrorKind };
 
 
@@ -31,8 +31,8 @@ pub struct Book<R: ReadSeek> {
     pub epub: ZipArchive<R>,
     /// `(title, author, description)`
     pub metadata: (String, String, String),
-    /// `(order, label, path)`
-    pub nav: Vec<(usize, String, PathBuf)>
+    /// `path`
+    pub spine: Vec<PathBuf>,
 }
 
 impl<R: ReadSeek> Book<R> {
@@ -56,32 +56,29 @@ impl<R: ReadSeek> Book<R> {
                 .unwrap_or_else(|| "None".into())
         );
 
-        let ncx_node = dom.select("item#ncx, item#toc, item#ncxtoc").unwrap()
-            .next().ok_or("No found <item id=..>.")?;
-        let ncx_path = ncx_node.attributes.borrow()
-            .get("href")
-            .map(|p| root.join(p))
-            .ok_or("No `href` in opf.")?;
+        let manifest = dom.select("item").unwrap()
+            .filter_map(|e| {
+                let attr = e.attributes.borrow();
+                Some((
+                    try_continue!(attr.get("id").map(str::to_string)),
+                    try_continue!(attr.get("href").map(str::to_string))
+                ))
+            })
+            .collect::<HashMap<_, _>>();
 
-        let mut nav = kuchiki::parse_html()
-            .from_utf8()
-            .read_from(&mut epub.by_name(ncx_path.to_str().unwrap())?)?
-            .select("navMap > navPoint").unwrap()
-            .map(|node| node_get_nav(&root, &node))
-            .filter_map(|r| match r {
-                Ok(output) => Some(output),
-                Err(err) => {
-                    writeln!(io::stderr(), "warn: {}", err).unwrap();
-                    None
-                }
+        let spine = dom.select("itemref").unwrap()
+            .filter_map(|e| {
+                let attr = e.attributes.borrow();
+                let idref = try_continue!(attr.get("idref"));
+                let href = try_continue!(manifest.get(idref));
+
+                Url::options().base_url(Some(&BASE_URL)).parse(href).ok()
+                    .map(|uri| root.join(uri.path().trim_left_matches('/')))
             })
             .collect::<Vec<_>>();
+        if spine.is_empty() { Err("spine list is empty!")? };
 
-        if nav.is_empty() { Err("nav list is empty!")? };
-        nav.sort_by_key(|&(order, ..)| order);
-        nav.dedup_by(|&mut (.., ref p1), &mut (.., ref p2)| p1 == p2);
-
-        Ok(Book { epub, metadata, nav })
+        Ok(Book { epub, metadata, spine })
     }
 
     pub fn from_container(mut epub: ZipArchive<R>) -> Result<Book<R>, Error> {
@@ -108,48 +105,18 @@ impl<R: ReadSeek> Book<R> {
             description.trim()
         )?;
 
-        for &(_, ref label, ref path) in &self.nav {
+        for ref path in &self.spine {
             let context = html2text::from_read(
                 &mut self.epub.by_name(&path.to_string_lossy())?,
-                ::std::usize::MAX
+                ::std::u16::MAX as usize
             );
 
-            if context.starts_with(label.trim()) {
-                write!(output, "{}", context)?;
-            } else {
-                write!(output, "{}:\n{}", label.trim(), context)?;
-            }
-
+            write!(output, "{}", context)?;
             write!(output, "\n-----\n\n")?;
         }
 
         Ok(())
     }
-}
-
-fn node_get_nav(root: &Path, node: &NodeDataRef<ElementData>) -> Result<(usize, String, PathBuf), Error> {
-    let attr = node.attributes.borrow();
-    let order = attr
-        .get("playOrder")
-        .or_else(|| attr.get("playorder"))
-        .ok_or_else(|| format!("No `playOrder` in <navPoint>: {:?}", node))?
-        .parse::<usize>()?;
-
-    let label = node.as_node().select("navLabel > text").unwrap()
-        .next()
-        .map(|node| node.text_contents())
-        .unwrap_or_default();
-
-    let path = node.as_node().select("content").unwrap()
-        .next()
-        .and_then(|n| n.attributes.borrow()
-            .get("src")
-            .and_then(|src| Url::options().base_url(Some(&BASE_URL)).parse(src).ok())
-            .map(|uri| root.join(uri.path().trim_left_matches('/')))
-        )
-        .ok_or_else(|| format!("No found <content> or `src`: {:?}", node))?;
-
-    Ok((order, label, path))
 }
 
 
