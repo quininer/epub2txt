@@ -105,10 +105,10 @@ impl<R: ReadSeek> Book<R> {
             description.trim()
         )?;
 
-        for ref path in &self.spine {
+        for path in &self.spine {
             let context = html2text::from_read(
                 &mut self.epub.by_name(&path.to_string_lossy())?,
-                ::std::u16::MAX as usize
+                ::std::u8::MAX as usize
             );
 
             write!(output, "{}", context)?;
