@@ -1,10 +1,12 @@
 extern crate clap;
+extern crate failure;
 extern crate epub2txt;
 
 use std::io::{ self, Read, Write, Cursor };
 use std::fs::File;
 use clap::{ Arg, App, ArgMatches };
-use epub2txt::{ ReadSeek, epub2txt, Error, ErrorKind };
+use failure::Error;
+use epub2txt::{ ReadSeek, epub2txt };
 
 
 #[inline]
@@ -17,7 +19,6 @@ fn app() -> App<'static, 'static> {
         .arg(Arg::with_name("output").short("o").long("output").value_name("OUTPUT").help("write to file."))
 }
 
-#[inline]
 fn start(matches: &ArgMatches) -> Result<(), Error> {
     let mut reader = if let Some(path) = matches.value_of("input") {
         Box::new(File::open(path)?) as Box<ReadSeek>
@@ -33,7 +34,9 @@ fn start(matches: &ArgMatches) -> Result<(), Error> {
     };
 
     match epub2txt(&mut reader, &mut writer) {
-        Err(Error(ErrorKind::Io(ref err), _)) if err.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+        Err(ref err) if err.downcast_ref::<io::Error>()
+            .map(|err| err.kind() == io::ErrorKind::BrokenPipe)
+            .unwrap_or(false) => Ok(()),
         output => output
     }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "epub2txt"
-version = "0.1.2"
+version = "0.2.0"
 authors = ["quininer kel <quininer@live.com>"]
 description = "Simple EPUB to TXT converter."
 
@@ -13,9 +13,8 @@ name = "epub2txt"
 
 [dependencies]
 url = "1.2"
-zip = { version = "0.2", default-features = false }
+zip = "0.3"
 clap = "2.19"
-kuchiki = "*"
-html2text = "0.1"
-lazy_static = "0.2"
-error-chain = "0.10"
+failure = "0.1"
+kuchiki = "0.6"
+lazy_static = "1.0"

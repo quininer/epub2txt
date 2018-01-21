@@ -1,23 +1,32 @@
 extern crate url;
 extern crate zip;
+extern crate failure;
 extern crate kuchiki;
-extern crate html2text;
 #[macro_use] extern crate lazy_static;
-#[macro_use] extern crate error_chain;
-
-#[macro_use] mod error;
 
 use std::collections::HashMap;
 use std::path::{ Path, PathBuf };
 use std::io::{ Read, Write, Seek };
 use url::Url;
 use zip::ZipArchive;
+use failure::{ Error, err_msg };
 use kuchiki::traits::*;
-pub use error::{ Error, ErrorKind };
 
 
 pub trait ReadSeek: Read + Seek {}
 impl<T: Read + Seek> ReadSeek for T {}
+
+macro_rules! try_continue {
+    ( $val:expr ) => {
+        match $val {
+            Some(val) => val,
+            None => {
+                eprintln!("key missing!");
+                return None
+            }
+        }
+    }
+}
 
 lazy_static! {
     static ref BASE_URL: Url = Url::from_directory_path("/").unwrap();
@@ -47,7 +56,7 @@ impl<R: ReadSeek> Book<R> {
         let metadata = (
             dom.select(r"dc\:title").unwrap()
                 .next().map(|e| e.text_contents())
-                .ok_or("No found <dc:title>.")?,
+                .ok_or(err_msg("No found <dc:title>"))?,
             dom.select(r"dc\:creator").unwrap()
                 .next().map(|e| e.text_contents())
                 .unwrap_or_else(|| "anonymous".into()),
@@ -76,7 +85,7 @@ impl<R: ReadSeek> Book<R> {
                     .map(|uri| root.join(uri.path().trim_left_matches('/')))
             })
             .collect::<Vec<_>>();
-        if spine.is_empty() { Err("spine list is empty!")? };
+        if spine.is_empty() { Err(err_msg("spine list is empty!"))? };
 
         Ok(Book { epub, metadata, spine })
     }
@@ -86,10 +95,10 @@ impl<R: ReadSeek> Book<R> {
             .from_utf8()
             .read_from(&mut epub.by_name("META-INF/container.xml")?)?
             .select("rootfile").unwrap()
-            .next().ok_or("No found <rootfile>.")?;
+            .next().ok_or(err_msg("No found <rootfile>."))?;
 
         let attrs = node.attributes.borrow();
-        Book::new(epub, attrs.get("full-path").ok_or("No `full-path` in container.")?)
+        Book::new(epub, attrs.get("full-path").ok_or(err_msg("No `full-path` in container."))?)
     }
 
     pub fn write_to(&mut self, output: &mut Write) -> Result<(), Error> {
@@ -106,12 +115,11 @@ impl<R: ReadSeek> Book<R> {
         )?;
 
         for path in &self.spine {
-            let context = html2text::from_read(
-                &mut self.epub.by_name(&path.to_string_lossy())?,
-                ::std::u8::MAX as usize
-            );
+            let dom = kuchiki::parse_html()
+                .from_utf8()
+                .read_from(&mut self.epub.by_name(&path.to_string_lossy())?)?;
 
-            write!(output, "{}", context)?;
+            write!(output, "{}", dom.text_contents())?;
             write!(output, "\n-----\n\n")?;
         }
 
