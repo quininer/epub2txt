@@ -12,9 +12,9 @@ doc = false
 name = "epub2txt"
 
 [dependencies]
-url = "1.2"
-zip = "0.3"
-clap = "2.19"
+url = "2.5"
+zip = "0.6.6"
+clap = "2"
 failure = "0.1"
-kuchiki = "0.6"
-lazy_static = "1.0"
+kuchiki = "0.8.1"
+lazy_static = "1.4"

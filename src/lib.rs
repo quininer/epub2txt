@@ -82,7 +82,7 @@ impl<R: ReadSeek> Book<R> {
                 let href = try_continue!(manifest.get(idref));
 
                 Url::options().base_url(Some(&BASE_URL)).parse(href).ok()
-                    .map(|uri| root.join(uri.path().trim_left_matches('/')))
+                    .map(|uri| root.join(uri.path().trim_start_matches('/')))
             })
             .collect::<Vec<_>>();
         if spine.is_empty() { Err(err_msg("spine list is empty!"))? };
@@ -101,7 +101,7 @@ impl<R: ReadSeek> Book<R> {
         Book::new(epub, attrs.get("full-path").ok_or(err_msg("No `full-path` in container."))?)
     }
 
-    pub fn write_to(&mut self, output: &mut Write) -> Result<(), Error> {
+    pub fn write_to(&mut self, output: &mut dyn Write) -> Result<(), Error> {
         let (ref title, ref author, ref description) = self.metadata;
 
         write!(
@@ -129,6 +129,6 @@ impl<R: ReadSeek> Book<R> {
 
 
 #[inline]
-pub fn epub2txt(input: &mut ReadSeek, output: &mut Write) -> Result<(), Error> {
+pub fn epub2txt(input: &mut dyn ReadSeek, output: &mut dyn Write) -> Result<(), Error> {
     Book::from_container(ZipArchive::new(input)?)?.write_to(output)
 }

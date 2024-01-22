@@ -21,16 +21,16 @@ fn app() -> App<'static, 'static> {
 
 fn start(matches: &ArgMatches) -> Result<(), Error> {
     let mut reader = if let Some(path) = matches.value_of("input") {
-        Box::new(File::open(path)?) as Box<ReadSeek>
+        Box::new(File::open(path)?) as Box<dyn ReadSeek>
     } else {
         let mut input = Vec::new();
         io::stdin().read_to_end(&mut input)?;
-        Box::new(Cursor::new(input)) as Box<ReadSeek>
+        Box::new(Cursor::new(input)) as Box<dyn ReadSeek>
     };
     let mut writer = if let Some(path) = matches.value_of("output") {
-        Box::new(File::create(path)?) as Box<Write>
+        Box::new(File::create(path)?) as Box<dyn Write>
     } else {
-        Box::new(io::stdout()) as Box<Write>
+        Box::new(io::stdout()) as Box<dyn Write>
     };
 
     match epub2txt(&mut reader, &mut writer) {
