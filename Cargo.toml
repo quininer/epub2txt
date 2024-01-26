@@ -14,7 +14,7 @@ name = "epub2txt"
 [dependencies]
 url = "2.5"
 zip = "0.6.6"
-clap = "2"
+clap = "4"
 failure = "0.1"
 kuchiki = "0.8.1"
 lazy_static = "1.4"
